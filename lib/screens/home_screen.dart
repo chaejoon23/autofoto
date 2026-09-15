@@ -78,7 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
         _statusMessage = '준비 완료! 사진을 선택하세요.';
       });
     } else {
-      setState(() => _statusMessage = '모델 로딩 실패');
+      setState(() => _statusMessage = '모델 로딩 실패: ${_classifier.lastError ?? "원인 불명"}');
     }
     setState(() => _isProcessing = false); // 로딩 끝
   }
@@ -146,11 +146,74 @@ class _HomeScreenState extends State<HomeScreen> {
 
     final results = await _classifier.classifyImage(_selectedImage!);
     
+    // 온디바이스에서는 구간별 소요 시간이 정확도만큼 중요하다. 별도 도구 없이
+    // 화면에서 바로 읽을 수 있게 상태 줄에 붙인다.
+    final timings = _classifier.lastTimings;
     setState(() {
       _classificationResult = results;
       _isProcessing = false;
-      _statusMessage = results != null ? '분류 완료!' : '분류 실패';
+      _statusMessage = results != null
+          ? '분류 완료!${timings != null ? "\n$timings" : ""}'
+          : '분류 실패';
     });
+  }
+
+  /// 선택한 사진으로 성능을 측정해 결과를 보여준다.
+  ///
+  /// 온디바이스 비전에서 제일 먼저 물어보는 숫자(추론 시간)를 별도 프로파일러
+  /// 없이 실기기에서 바로 얻기 위한 화면이다. 결과 텍스트는 그대로 README의
+  /// 「측정」 표에 붙일 수 있다.
+  Future<void> _runBenchmark() async {
+    final image = _selectedImage;
+    if (image == null || !_classifier.isModelLoaded()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('모델을 로드하고 사진을 먼저 선택하세요.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isProcessing = true;
+      _statusMessage = '측정 중입니다 (약 50회 추론)...';
+    });
+
+    final timings = await _classifier.benchmark(image);
+    final preprocess = await _classifier.benchmarkPreprocess(image);
+    final normalization = await _classifier.compareNormalizations(image);
+
+    if (!mounted) return;
+    setState(() {
+      _isProcessing = false;
+      _statusMessage = '측정 완료';
+    });
+
+    final report = [
+      '| 항목 | 값 |',
+      '|---|---:|',
+      timings?.toMarkdownRows() ?? '| 측정 실패 | — |',
+      '',
+      preprocess,
+      '',
+      normalization,
+      '',
+      '확률이 뚜렷하게 높은 쪽이 이 모델이 기대하는 정규화 범위입니다.',
+    ].join('\n');
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('성능 측정 (중앙값)'),
+        content: SingleChildScrollView(
+          child: SelectableText(report, style: const TextStyle(fontSize: 12)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -159,6 +222,11 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Text('AutoFoto${_currentModelName != null ? " ($_currentModelName)" : ""}'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.speed_rounded),
+            onPressed: _isProcessing ? null : _runBenchmark,
+            tooltip: '성능 측정',
+          ),
           IconButton(
             icon: const Icon(Icons.swap_horiz_rounded),
             onPressed: _showModelSelectionDialog,
