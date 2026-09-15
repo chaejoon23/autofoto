@@ -7,7 +7,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:archive/archive.dart';
 
 class ApiService {
-  static const String _baseUrl = 'http://172.20.10.4:9000';
+  /// 모델 서버 주소. 빌드할 때 넘긴다:
+  ///   flutter run --profile --dart-define=MODEL_SERVER=http://192.168.0.12:9000
+  /// 서버는 `python3 tools/model_server.py`로 맥에서 띄운다 (README 「실행」).
+  /// 기본값 localhost는 iOS 시뮬레이터에서만 동작한다.
+  static const String _baseUrl =
+      String.fromEnvironment('MODEL_SERVER', defaultValue: 'http://localhost:9000');
 
   // 1. 서버에서 모델 목록을 가져오는 함수
   static Future<List<String>> getAvailableModels() async {

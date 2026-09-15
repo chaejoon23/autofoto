@@ -1,6 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 모델 목록·다운로드. debug/profile 매니페스트에만 있어 release 빌드에서 막혔다. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 모델 서버가 같은 와이파이의 맥(http)이라 평문 통신을 허용한다.
+         배포 서버를 https로 옮기면 지운다. -->
     <application
         android:label="autofoto"
+        android:usesCleartextTraffic="true"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

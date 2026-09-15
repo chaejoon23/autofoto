@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kDebugMode, kProfileMode, kReleaseMode;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -187,16 +188,28 @@ class _HomeScreenState extends State<HomeScreen> {
       _statusMessage = '측정 완료';
     });
 
+    // 디버그 빌드는 Dart가 JIT로 돌아 전처리 시간이 몇 배 부풀려진다.
+    // README에 붙일 숫자는 --profile 또는 --release 빌드에서만 유효하다.
+    final buildMode = kReleaseMode
+        ? 'release'
+        : kProfileMode
+            ? 'profile'
+            : 'debug';
+
     final report = [
+      if (kDebugMode) '⚠ debug 빌드입니다. 이 숫자는 README에 쓰지 마세요 (flutter run --profile).',
       '| 항목 | 값 |',
       '|---|---:|',
+      '| 빌드 | $buildMode |',
+      '| 정규화 | ${_classifier.normalization.name} |',
       timings?.toMarkdownRows() ?? '| 측정 실패 | — |',
       '',
       preprocess,
       '',
       normalization,
       '',
-      '확률이 뚜렷하게 높은 쪽이 이 모델이 기대하는 정규화 범위입니다.',
+      '정규화 비교는 두 경로가 기기에서 동작하는지 보는 확인용입니다. '
+          '한 장의 확률로 정규화를 고르지 마세요 (README 「정규화 범위 확인」).',
     ].join('\n');
 
     await showDialog<void>(

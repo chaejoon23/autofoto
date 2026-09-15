@@ -7,10 +7,19 @@ import 'package:tflite_flutter/tflite_flutter.dart';
 
 /// 모델이 기대하는 입력 정규화 범위.
 ///
-/// MobileNetV2 배포본은 두 종류가 돌아다닌다. Keras `preprocess_input` 계열은
-/// [-1, 1]을, TF Hub의 일부 float 변환본은 [0, 1]을 기대한다. **틀려도 에러가
-/// 나지 않고 정확도만 조용히 떨어진다.** 어느 쪽인지는 모델 카드를 보거나
-/// [ImageClassifier.compareNormalizations]로 직접 확인한다.
+/// MobileNetV2 배포본은 두 종류가 돌아다닌다. Keras `preprocess_input`·TF-Slim
+/// 계열은 [-1, 1]을, TF Hub의 일부 TF2 변환본은 [0, 1]을 기대한다. **틀려도 에러가
+/// 나지 않고 정확도만 조용히 떨어진다.**
+///
+/// 이 앱이 쓰는 모델(`tools/fetch_model.py`가 받는 1001-클래스 MobileNetV2)은
+/// [-1, 1]로 확정했다. 근거는 세 가지다 (README 「정규화 범위 확인」).
+///  1. 모델 메타데이터: NormalizationOptions mean 127.5 / std 127.5
+///  2. ImageNet 클래스당 1장(1000장)을 앱과 같은 전처리(nearest 리사이즈)로 분류:
+///     top-1 [-1,1] 83.9% vs [0,1] 75.0% (McNemar p ≈ 5e-16)
+///  3. 첫 커밋의 labels.txt가 이 모델의 내장 라벨과 1001줄 모두 일치
+///
+/// 모델을 바꾸면 이 판단도 다시 해야 한다. 한 장의 확률만으로는 판단할 수 없다
+/// ([ImageClassifier.compareNormalizations] 참고).
 enum InputNormalization {
   /// pixel / 255 → [0, 1]
   zeroToOne,
@@ -74,7 +83,8 @@ class ImageClassifier {
   List<String>? _labels;
 
   /// 입력 정규화 범위. 모델 카드와 맞지 않으면 정확도가 조용히 떨어진다.
-  InputNormalization normalization = InputNormalization.zeroToOne;
+  /// 기본 모델 기준 [-1, 1]이 맞다 ([InputNormalization] 문서의 근거 참고).
+  InputNormalization normalization = InputNormalization.minusOneToOne;
 
   /// true면 [Float32List]에 연속으로 쓰고, false면 예전 중첩 List 경로를 쓴다.
   /// 벤치마크에서 전처리 최적화 전/후를 같은 기기에서 비교하기 위해 남겨 둔다.
@@ -317,9 +327,14 @@ class ImageClassifier {
         '${(fast.inferenceUs / 1000).toStringAsFixed(1)} ms.';
   }
 
-  /// 두 정규화 범위로 각각 분류해 상위 1개를 비교한다. 모델 카드가 없을 때
-  /// 어느 쪽이 맞는지 **결과를 보고** 판단하기 위한 도구다. 맞는 쪽이 눈에
-  /// 띄게 높은 확률을 준다.
+  /// 두 정규화 범위로 각각 분류해 상위 1개를 비교한다.
+  ///
+  /// **이 결과 한 장으로 정규화를 고르면 안 된다.** 틀린 정규화도 쉬운 사진은
+  /// 대개 맞히고, 확률이 오히려 더 높게 나오기도 한다. 1000장에서 "확률이 높은
+  /// 쪽"을 골랐을 때 맞는 정규화([-1,1])를 고른 비율은 65%뿐이었다. 결정은
+  /// 모델 메타데이터와 라벨 있는 여러 장의 정확도로 한다
+  /// (`tools/check_normalization.py`). 여기서는 기기에서도 두 경로가 모두
+  /// 동작하는지 보는 확인용으로만 쓴다.
   Future<String> compareNormalizations(File imageFile) async {
     final previous = normalization;
     final lines = <String>['| 정규화 | 상위 1개 | 확률 |', '|---|---|---:|'];
