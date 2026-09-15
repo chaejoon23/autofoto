@@ -2,9 +2,18 @@
 
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:archive/archive.dart';
+
+/// 정확도 평가용 사진 한 장. [labelIndex]는 정렬된 ImageNet synset 순서(0~999).
+class EvalItem {
+  const EvalItem(this.file, this.labelIndex);
+
+  final String file;
+  final int labelIndex;
+}
 
 class ApiService {
   /// 모델 서버 주소. 빌드할 때 넘긴다:
@@ -61,5 +70,33 @@ class ApiService {
       print('$modelName 모델 다운로드 중 오류: $e');
     }
     return false;
+  }
+
+  // 3. 정확도 평가용 사진 목록 (tools/model_server.py --eval)
+  static Future<List<EvalItem>> getEvalList() async {
+    try {
+      final response = await http.get(Uri.parse('$_baseUrl/eval/list'));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as List<dynamic>;
+        return data
+            .map((e) => EvalItem(e['file'] as String, e['label_index'] as int))
+            .toList();
+      }
+    } catch (e) {
+      print('평가 목록 가져오기 실패: $e');
+    }
+    return [];
+  }
+
+  // 4. 평가 사진 한 장 (인코딩된 원본 바이트)
+  static Future<Uint8List?> fetchEvalImage(String file) async {
+    try {
+      final url = Uri.parse('$_baseUrl/eval/image').replace(queryParameters: {'name': file});
+      final response = await http.get(url);
+      if (response.statusCode == 200) return response.bodyBytes;
+    } catch (e) {
+      print('평가 사진 받기 실패 ($file): $e');
+    }
+    return null;
   }
 }

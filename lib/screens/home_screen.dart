@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path_provider/path_provider.dart';
 import '../api/api_service.dart';
+import '../services/accuracy_eval.dart';
 import '../services/image_classifier.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -135,7 +136,13 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+    // 원본(아이폰 12MP)을 그대로 받으면 Dart 디코더가 느리고, 224px까지 한 번에
+    // 줄이면 정확도도 떨어진다. 피커가 네이티브에서 고품질로 먼저 줄이게 한다.
+    final XFile? image = await _picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      maxHeight: 1024,
+    );
     if (image == null) return;
 
     setState(() {
@@ -159,6 +166,69 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  /// 모델 서버의 ImageNet 표본(클래스당 1장)으로 두 디코더의 정확도를 기기에서 비교한다.
+  ///
+  /// 속도는 [_runBenchmark]로 이미 쟀다 (platform 3.6~4.2배). 기본 디코더를 바꾸려면
+  /// 정확도가 떨어지지 않는다는 근거가 필요한데, 플랫폼 축소 필터는 PC에서 재현할 수
+  /// 없어서 기기에서 직접 잰다. 1000장 × 2경로라 1~2분 걸린다.
+  Future<void> _runDecoderAccuracyEval() async {
+    if (!_classifier.isModelLoaded()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('모델을 먼저 로드하세요.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isProcessing = true;
+      _statusMessage = '디코더 정확도 평가 준비 중...';
+    });
+
+    String report;
+    try {
+      final result = await DecoderAccuracyEval(_classifier).run(
+        onProgress: (done, total) {
+          if (mounted) setState(() => _statusMessage = '디코더 정확도 평가 $done / $total');
+        },
+      );
+      final buildMode = kReleaseMode
+          ? 'release'
+          : kProfileMode
+              ? 'profile'
+              : 'debug';
+      report = [
+        '| 빌드 | $buildMode |',
+        '| 정규화 | ${_classifier.normalization.name} |',
+        '',
+        result.toMarkdown(),
+      ].join('\n');
+    } catch (e) {
+      report = '평가 실패: $e';
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _isProcessing = false;
+      _statusMessage = '평가 완료';
+    });
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('디코더 정확도 (ImageNet 표본)'),
+        content: SingleChildScrollView(
+          child: SelectableText(report, style: const TextStyle(fontSize: 12)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('닫기'),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 선택한 사진으로 성능을 측정해 결과를 보여준다.
   ///
   /// 온디바이스 비전에서 제일 먼저 물어보는 숫자(추론 시간)를 별도 프로파일러
@@ -175,11 +245,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() {
       _isProcessing = true;
-      _statusMessage = '측정 중입니다 (약 50회 추론)...';
+      _statusMessage = '측정 중입니다 (약 170회 추론, 10초 안팎)...';
     });
 
     final timings = await _classifier.benchmark(image);
+    final source = '${_classifier.lastSourceWidth ?? '?'}×${_classifier.lastSourceHeight ?? '?'}';
     final preprocess = await _classifier.benchmarkPreprocess(image);
+    final decoders = await _classifier.benchmarkDecoders(image);
     final normalization = await _classifier.compareNormalizations(image);
 
     if (!mounted) return;
@@ -202,9 +274,13 @@ class _HomeScreenState extends State<HomeScreen> {
       '|---|---:|',
       '| 빌드 | $buildMode |',
       '| 정규화 | ${_classifier.normalization.name} |',
+      '| 입력 크기 (피커 축소 후) | $source |',
+      '| 디코더 | ${_classifier.decoder.name} |',
       timings?.toMarkdownRows() ?? '| 측정 실패 | — |',
       '',
       preprocess,
+      '',
+      decoders,
       '',
       normalization,
       '',
@@ -235,6 +311,11 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Text('AutoFoto${_currentModelName != null ? " ($_currentModelName)" : ""}'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.fact_check_outlined),
+            onPressed: _isProcessing ? null : _runDecoderAccuracyEval,
+            tooltip: '디코더 정확도 평가',
+          ),
           IconButton(
             icon: const Icon(Icons.speed_rounded),
             onPressed: _isProcessing ? null : _runBenchmark,

@@ -87,7 +87,7 @@ def mcnemar_exact(b: int, c: int) -> float:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--model", type=Path, default=ROOT / "models" / "mobilenet_v2" / "model.tflite")
+    ap.add_argument("--model", type=Path, default=ROOT / "models" / "mobilenetv2" / "model.tflite")
     ap.add_argument("--labels", type=Path, default=None, help="기본: 모델 폴더의 labels.txt")
     ap.add_argument("--cache", type=Path, default=ROOT / ".cache" / "imagenet-sample")
     ap.add_argument("--out", type=Path, default=ROOT / "results" / "normalization.json")

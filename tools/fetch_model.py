@@ -13,7 +13,7 @@
 
 표준 라이브러리만 쓴다.
 
-    python3 tools/fetch_model.py            # → tools/models/mobilenet_v2/{model.tflite,labels.txt}
+    python3 tools/fetch_model.py            # → tools/models/mobilenetv2/{model.tflite,labels.txt}
 """
 from __future__ import annotations
 
@@ -44,7 +44,8 @@ def sha256(path: Path) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--name", default="mobilenet_v2", help="앱 모델 목록에 보일 이름 (폴더명)")
+    # 앱 기본 모델명(home_screen.dart의 'mobilenetv2')과 같아야 첫 실행 자동 다운로드가 된다.
+    ap.add_argument("--name", default="mobilenetv2", help="앱 모델 목록에 보일 이름 (폴더명)")
     ap.add_argument("--out", type=Path, default=ROOT / "models")
     a = ap.parse_args()
 
