@@ -284,4 +284,4 @@ bilinear 차이가 1.9%p에 그쳤습니다(면적 평균은 86.0%). 아이폰�
 - [**dinov3-image-search**](https://github.com/chaejoon23/dinov3-image-search)
   — 자기지도 임베딩으로 닮은 이미지·장소를 찾는 검색
 
-이 레포가 **배포**, Bin_pind가 **화질**, dinoV3_rep **표현학습** 쪽입니다.
+이 레포가 **배포**, Bin_pind가 **화질**, dinoV3-image-search가 **표현학습** 쪽입니다.
